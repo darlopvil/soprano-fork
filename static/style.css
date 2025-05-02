@@ -1,0 +1,52 @@
+body {
+	font-family: Fira Sans, Liberation Sans, DejaVu Sans, sans-serif;
+	font-size: 1.1em;
+	line-height: 1.5em;
+	color: #f0f0f0;
+	background-color: #191919;
+	hyphens: auto;
+	margin: 0 auto;
+	padding: 3%;
+}
+
+img {
+	border-radius: 10px;
+	max-width: 80%;
+	max-height: 90vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	color: #E3651D;
+}
+
+h1 {
+	line-height: 1.5em;
+	max-width: 90%;
+}
+
+a {
+	color: #BED754;
+	text-decoration: none;
+}
+
+header img {
+	width: 50px;
+	height: 50px;
+	display: inline-block;
+}
+
+header form {
+	display: inline-block;
+	margin-top: -3.5em;
+	margin-left: 70vw;
+}
+
+div.search.list {
+	columns: 5;
+	column-gap: 0;
+}
+
+div.search.list img {
+	margin-bottom: 1em;
+	background: gray;
+}

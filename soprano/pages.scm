@@ -111,7 +111,7 @@
         (sub ""))
     (map (lambda (p)
            (if (equal? (car p) "url")
-             (set! url (cadr p)))
+             (set! url (uri-decode (cadr p))))
            (if (equal? (car p) "sub")
              (set! sub (cadr p))))
          (map (lambda (s)

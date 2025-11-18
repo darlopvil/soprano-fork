@@ -15,5 +15,14 @@
 	"country": "US",
 	"owner_name": "Butter Cat",
 	"owner_website": "https://catsarch.com"
+    },
+    {
+	"clearnet": "https://tenor.fsky.io",
+	"tor": "http://tenorxfrvzsgjde6k3f64jen7fqr5mouk7qr7c3tptab5b5ohnwpniyd.onion/",
+	"i2p": null,
+	"patches": null,
+	"country": "NL",
+	"owner_name": "FSKY",
+	"owner_website": "https://fsky.io"
     }
 ]

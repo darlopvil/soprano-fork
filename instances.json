@@ -21,8 +21,8 @@
         "clearnet": "https://tenor.fsky.io",
         "tor": "http://tenorxfrvzsgjde6k3f64jen7fqr5mouk7qr7c3tptab5b5ohnwpniyd.onion/",
         "i2p": "",
-        "patches": "",
-        "country": "NL",
+        "patches": "https://foundry.fsky.io/fsky/Soprano",
+        "country": "PL",
         "owner_name": "FSKY",
         "owner_website": "https://fsky.io"
     }

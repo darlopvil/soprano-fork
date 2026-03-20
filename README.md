@@ -28,6 +28,3 @@ You will need need `guile`, `guile-gnutls`, and `guile-lib`.
 The following are optional.
 
 `PORT` - What port to run on (default `8005`).
-
-## Notes
-When using a service manager (e.g. systemd), make sure the stop signal is set to SIGINT, or 2. This will prevent EADDRINUSE.

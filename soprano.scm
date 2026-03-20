@@ -82,6 +82,7 @@
               (string->number (getenv "PORT"))
               8005))
       (sock (socket PF_INET SOCK_STREAM 0)))
+  (setsockopt sock SOL_SOCKET SO_REUSEPORT 1)
   (bind sock AF_INET INADDR_ANY port)
   (fcntl sock F_SETFL (logior O_NONBLOCK
                               (fcntl sock F_GETFL)))

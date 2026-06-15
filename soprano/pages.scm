@@ -117,13 +117,8 @@
          (map (lambda (s)
                 (string-split s #\=))
               (string-split query #\&)))
-    (if (or
-          (and
-            (>= (string-length url) 25)
-            (equal? (substring url 0 25) "https://media1.tenor.com/"))
-          (and
-            (>= (string-length url) 24)
-            (equal? (substring url 0 24) "https://media.tenor.com/")))
+    (if (or (string-prefix? "https://media1.tenor.com/" url)
+            (string-prefix? "https://media.tenor.com/" url))
       (begin
         (receive (_resp _body) (http-request url)
                  (set! resp _resp)

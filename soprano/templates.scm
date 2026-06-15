@@ -89,7 +89,7 @@
            (h1 "Search")
            (div (@ (class "search list"))
                 ,(map (lambda (p)
-                        (if (not (equal? (substring (car p) 0 10) "/gif-maker"))
+                        (if (not (string-prefix? "/gif-maker" (car p)))
                           `(a (@ (href ,(car p)))
                               (img (@ (src ,(proxy (cdr p)))
                                       (loading "lazy"))))

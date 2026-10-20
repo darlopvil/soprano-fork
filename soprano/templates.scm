@@ -19,6 +19,7 @@
 (define-module (soprano templates)
   #:use-module (soprano scraping)
   #:use-module (htmlprag)
+  #:use-module (web uri)
   #:export (error-template
             index-template
             gif-template
@@ -85,23 +86,44 @@
                       "-16733124990588327175"))
            ,footer)))
 
-(define (gif-template d)
-  (let ((gif (get-gif d)))
-    `(html ,(html-head (car gif))
-           (body
-             ,heading
-             (h1 ,(car gif))
-             (img (@ (alt ,(car gif))
-                     (src ,(proxy (cadr gif)))
-                     (loading "lazy")))
-             ,footer))))
-
 ;; Width and height let the browser reserve space before the image loads, so
-;; the grid does not jump around while thumbnails arrive.
+;; the page does not jump around while it arrives.
 (define (size-attributes width height)
   (if (and (integer? width) (integer? height))
     `((width ,(number->string width)) (height ,(number->string height)))
     '()))
+
+;; Last path segment of a media URL, decoded: the name for a downloaded file.
+(define (file-name url)
+  (uri-decode (car (last-pair (string-split url #\/)))))
+
+(define (download-links downloads)
+  `(p (@ (class "downloads"))
+      "Download: "
+      ,@(let loop ((downloads downloads) (first? #t))
+          (if (null? downloads)
+            '()
+            (let ((label (caar downloads))
+                  (url (cdar downloads)))
+              `(,@(if first? '() '(" · "))
+                (a (@ (href ,(proxy url)) (download ,(file-name url)))
+                   ,label)
+                ,@(loop (cdr downloads) #f)))))))
+
+(define (gif-template d)
+  (let* ((gif (get-gif d))
+         (title (assq-ref gif 'title))
+         (image (assq-ref gif 'image))
+         (downloads (assq-ref gif 'downloads)))
+    `(html ,(html-head title)
+           (body
+             ,heading
+             (h1 ,title)
+             (img (@ (alt ,title)
+                     (src ,(proxy (car image)))
+                     ,@(size-attributes (cadr image) (caddr image))))
+             ,(if (pair? downloads) (download-links downloads) '())
+             ,footer))))
 
 (define (search-template d)
   `(html ,(html-head "Search")

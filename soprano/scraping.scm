@@ -52,15 +52,21 @@
 (define (first-value data)
   (and (pair? data) (pair? (car data)) (cdar data)))
 
-(define (media-url gif . formats)
-  (any (lambda (name) (ref gif "media_formats" name "url")) formats))
-
 (define (sticker? gif)
   (let ((flags (ref gif "flags")))
     (and (vector? flags) (member "sticker" (vector->list flags)) #t)))
 
 (define (media-width gif name)
   (ref gif "media_formats" name "dims" 0))
+
+;; The first available format among NAMES -> (url width height), or #f.
+(define (media gif . names)
+  (let ((name (find (lambda (name) (ref gif "media_formats" name "url"))
+                    names)))
+    (and name
+         (list (ref gif "media_formats" name "url")
+               (media-width gif name)
+               (ref gif "media_formats" name "dims" 1)))))
 
 ;; Thumbnails are always images, never videos: hardened browsers block video
 ;; autoplay, even muted, and a frontend must not ask people to loosen their
@@ -90,14 +96,26 @@
        (string-prefix? "https://tenor.com/" url)
        (substring url (string-length "https://tenor.com"))))
 
-;; -> (title media-url)
+;; The GIF page shows an animated webp: the same animation as mediumgif at the
+;; same or a higher resolution, about 6 times lighter.  It is an image, so it
+;; plays in every browser, including those that block video autoplay.
+;; Tenor's "hasaudio" flag is ignored: none of the media files it serves,
+;; video ones included, carry an audio track.
+;; -> alist with title, image (url width height) and downloads, a list of
+;; (label . url).
 (define (get-gif body)
   (let* ((gif (ref (first-value (ref (store-cache body) "gifs" "byId"))
                    "results" 0))
          (title (ref gif "h1_title"))
-         (url (media-url gif "mediumgif" "gif")))
-    (if (and (string? title) url)
-      (list title url)
+         (image (media gif "webp" "mediumgif" "gif")))
+    (if (and (string? title) image)
+      `((title . ,title)
+        (image . ,image)
+        (downloads
+         . ,(filter-map (lambda (format)
+                          (let ((found (media gif (cdr format))))
+                            (and found (cons (car format) (car found)))))
+                        '(("GIF" . "gif") ("MP4" . "mp4") ("WebM" . "webm")))))
       (throw 'gif-missing))))
 
 ;; Tenor lays search results out in columns and lists them column by column

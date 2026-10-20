@@ -29,7 +29,7 @@
             search-template))
 
 (define (html-head title)
-  `(head (title ,(string-append title " - Soprano"))
+  `(head (title ,(if title (string-append title " - Soprano") "Soprano"))
          (meta (@ (charset "UTF-8")))
          (meta (@ (name "viewport") (content "width=device-width")))
          (meta (@ (name "robots") (content "noindex, nofollow")))
@@ -40,7 +40,17 @@
 ;; from a localized page stays in that locale.
 (define current-locale (make-parameter ""))
 
-(define (heading)
+;; Every page: a real doctype (without one, browsers render in quirks mode),
+;; a language and the shared head.  TITLE #f is the plain "Soprano".
+(define (page title . body)
+  `(*TOP* (*DECL* DOCTYPE html)
+          (html (@ (lang "en"))
+                ,(html-head title)
+                (body ,@body))))
+
+;; Only the index focuses the search box: elsewhere it would pop up the
+;; on-screen keyboard on phones every time a GIF is opened.
+(define* (heading #:key autofocus?)
   `(header (a (@ (href "/"))
               (img (@ (src "/favicon.png"))))
            (form (@ (id "search")
@@ -51,7 +61,7 @@
                            (id "q")
                            (name "q")
                            (placeholder "Search")
-                           (autofocus)))
+                           ,@(if autofocus? '((autofocus)) '())))
                  (button "Go"))))
 
 (define (env-or name default)
@@ -77,22 +87,21 @@
         " by Skylar Astaroth")))
 
 (define (index-template host)
-  `(html ,(html-head "Soprano")
-         (body
-           ,(heading)
-           (h1 "Soprano")
-           (p "Soprano is a privacy-respecting front-end to Tenor.")
-           (br)
-           (h2 "Usage")
-           (p "You can use Soprano by replacing " (code "tenor.com")
-              " with this website's domain")
-           (h3 "Example")
-           (pre (code "https://tenor.com/view/a-on-the-test-gif"
-                      "-16733124990588327175"))
-           (p "becomes")
-           (pre (code "https://" ,host "/view/a-on-the-test-gif"
-                      "-16733124990588327175"))
-           ,footer)))
+  (page #f
+        (heading #:autofocus? #t)
+        '(h1 "Soprano")
+        '(p "Soprano is a privacy-respecting front-end to Tenor.")
+        '(br)
+        '(h2 "Usage")
+        '(p "You can use Soprano by replacing " (code "tenor.com")
+            " with this website's domain")
+        '(h3 "Example")
+        '(pre (code "https://tenor.com/view/a-on-the-test-gif"
+                    "-16733124990588327175"))
+        '(p "becomes")
+        `(pre (code "https://" ,host "/view/a-on-the-test-gif"
+                    "-16733124990588327175"))
+        footer))
 
 ;; Width and height let the browser reserve space before the image loads, so
 ;; the page does not jump around while it arrives.
@@ -161,7 +170,10 @@
                                              (cadddr result))))
                   (if (not (string-prefix? "/gif-maker" href))
                     `(a (@ (href ,href))
-                        (img (@ (src ,src) ,@size (loading "lazy"))))
+                        (img (@ (src ,src)
+                                (alt ,(list-ref result 4))
+                                ,@size
+                                (loading "lazy"))))
                     '())))
               results)))
 
@@ -172,28 +184,26 @@
          (tags (assq-ref gif 'tags))
          (downloads (assq-ref gif 'downloads))
          (related (assq-ref gif 'related)))
-    `(html ,(html-head title)
-           (body
-             ,(heading)
-             (h1 ,title)
-             (img (@ (alt ,(or (assq-ref gif 'description) title))
-                     (src ,(proxy (car image)))
-                     ,@(size-attributes (cadr image) (caddr image))))
-             ,(if (pair? tags) (tag-links tags) '())
-             ,(credits (assq-ref gif 'author) (assq-ref gif 'tenor-url))
-             ,(if (pair? downloads) (download-links downloads) '())
-             ,(if (pair? related)
-                `((h2 "Related") ,(thumbnail-grid related))
-                '())
-             ,footer))))
+    (page title
+          (heading)
+          `(h1 ,title)
+          `(img (@ (alt ,(or (assq-ref gif 'description) title))
+                   (src ,(proxy (car image)))
+                   ,@(size-attributes (cadr image) (caddr image))))
+          (if (pair? tags) (tag-links tags) '())
+          (credits (assq-ref gif 'author) (assq-ref gif 'tenor-url))
+          (if (pair? downloads) (download-links downloads) '())
+          (if (pair? related)
+            `((h2 "Related") ,(thumbnail-grid related))
+            '())
+          footer)))
 
 (define (search-template d)
-  `(html ,(html-head "Search")
-         (body
-           ,(heading)
-           (h1 "Search")
-           ,(thumbnail-grid (get-search d))
-           ,footer)))
+  (page "Search"
+        (heading)
+        '(h1 "Search")
+        (thumbnail-grid (get-search d))
+        footer))
 
 (define (error-message code)
   (case code
@@ -204,10 +214,9 @@
     (else #f)))
 
 (define (error-template code)
-  `(html ,(html-head (number->string code))
-         (body
-           ,(heading)
-           (h1 ,(number->string code))
-           ,(let ((message (error-message code)))
-              (if message `(p ,message) '()))
-           ,footer)))
+  (page (number->string code)
+        (heading)
+        `(h1 ,(number->string code))
+        (let ((message (error-message code)))
+          (if message `(p ,message) '()))
+        footer))

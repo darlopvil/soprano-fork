@@ -96,14 +96,23 @@
        (string-prefix? "https://tenor.com/" url)
        (substring url (string-length "https://tenor.com"))))
 
-;; -> list of (local-link url width height), see thumbnail.  Results that
+;; Short text describing a GIF: Tenor's content description, else its title.
+(define (alt-text gif)
+  (let ((description (ref gif "content_description"))
+        (title (ref gif "h1_title")))
+    (cond ((and (string? description) (not (string-null? description)))
+           description)
+          ((string? title) title)
+          (else ""))))
+
+;; -> list of (local-link url width height alt), see thumbnail.  Results that
 ;; cannot be linked or shown are skipped.
 (define (thumbnails results)
   (filter-map
     (lambda (gif)
       (let ((href (local-path (ref gif "itemurl")))
             (thumb (thumbnail gif)))
-        (and href thumb (cons href thumb))))
+        (and href thumb `(,href ,@thumb ,(alt-text gif)))))
     results))
 
 (define (strings data)
@@ -173,7 +182,7 @@
         (and (= (car ka) (car kb))
              (< (cdr ka) (cdr kb))))))
 
-;; -> list of (local-link url width height), see thumbnail
+;; -> list of (local-link url width height alt), see thumbnails
 (define (get-search body)
   (let ((results (ref (first-value (ref (store-cache body) "universal" "search"))
                       "results")))

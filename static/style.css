@@ -35,10 +35,27 @@ header img {
 	display: inline-block;
 }
 
+header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1em;
+}
+
 header form {
-	display: inline-block;
-	margin-top: -3.5em;
-	margin-left: 70vw;
+	display: flex;
+	gap: 0.3em;
+}
+
+header input {
+	min-width: 0;
+}
+
+/* Long example URLs must wrap instead of widening the page on phones. */
+pre {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 
 div.search.list {
@@ -58,4 +75,12 @@ div.search.list img {
 	max-width: 100%;
 	height: auto;
 	background: gray;
+}
+
+/* Phones: two columns keep thumbnails near their native ~200px width. */
+@media (max-width: 500px) {
+	div.search.list {
+		column-width: auto;
+		column-count: 2;
+	}
 }

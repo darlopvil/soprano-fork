@@ -99,6 +99,11 @@
     (write-log! (get-output-string log))))
 
 (define (run-threaded-server handler sock)
+  ;; A client that goes away mid-response (a closed tab) makes the next write
+  ;; raise SIGPIPE, whose default action kills the whole process.  Ignoring it
+  ;; turns that into an EPIPE error that only ends that client's thread.
+  ;; Guile's own 'http server does the same in http-open.
+  (sigaction SIGPIPE SIG_IGN)
   (listen sock 128)
   (let loop ()
     (acquire-slot!)

@@ -233,39 +233,59 @@
   (display ";\tHandler: index-page") (newline)
   (values good-response (shtml->html (index-template host))))
 
+;; The proxy only fetches from Tenor's media hosts.
+(define (media-url? url)
+  (or (string-prefix? "https://media1.tenor.com/" url)
+      (string-prefix? "https://media.tenor.com/" url)))
+
+;; Redirects the proxy follows for one media file before giving up.
+(define max-redirects 2)
+
+;; Absolute URL a redirect from URL points to, or #f.
+(define (redirect-target url response)
+  (let ((location (response-location response)))
+    (cond ((not location) #f)
+          ((uri-scheme location) (uri->string location))
+          ((string-prefix? "/" (uri-path location))
+           (let ((base (string->uri url)))
+             (uri->string (build-uri (uri-scheme base)
+                                     #:host (uri-host base)
+                                     #:port (uri-port base)
+                                     #:path (uri-path location)
+                                     #:query (uri-query location)))))
+          (else #f))))
+
+;; Redirects are followed here: passing one on would send the browser either
+;; to Tenor itself or, with a bare path, to a page Soprano does not have.
+;; Every hop must stay on the media hosts.
 (define (proxy-page query)
   (display ";\tHandler: proxy-page")
-  (let ((resp "")
-        (body "")
-        (url (uri-decode (or (query-ref query "url") ""))))
-    (if (or (string-prefix? "https://media1.tenor.com/" url)
-            (string-prefix? "https://media.tenor.com/" url))
+  (let ((url (uri-decode (or (query-ref query "url") ""))))
+    (if (media-url? url)
       (with-upstream-errors
         (lambda ()
-          (receive (_resp _body) (fetch url)
-                   (set! resp _resp)
-                   (set! body _body))
-          (cond
-            ((equal? (response-code resp) 200)
-             (values (build-response
-                       #:code 200
-                       #:headers `((content-type .
-                                    ,(response-content-type resp))
-                                   (cache-control .
-                                    ,(parse-header 'cache-control
-                                                   "max-age=604800"))))
-                     body))
-            ((and (>= (response-code resp) 300)
-                  (<= (response-code resp) 399))
-             (values (build-response
-                       #:code (response-code resp)
-                       #:headers `((location . ,(parse-header
-                                                  'location
-                                                  (uri-path
-                                                    (response-location
-                                                      resp))))
-                                   (content-type .
-                                    ,(response-content-type resp))))
-                     "Redirect"))
-            (else (error-page 404)))))
+          (let loop ((url url) (redirects 0))
+            (receive (resp body) (fetch url)
+              (let ((code (response-code resp)))
+                (cond
+                  ((= code 200)
+                   (values (build-response
+                             #:code 200
+                             #:headers `((content-type .
+                                          ,(or (response-content-type resp)
+                                               '(application/octet-stream)))
+                                         (cache-control .
+                                          ,(parse-header 'cache-control
+                                                         "max-age=604800"))))
+                           body))
+                  ((and (>= code 300) (<= code 399))
+                   (let ((target (redirect-target url resp)))
+                     (display (string-append ";\tRedirect: "
+                                             (or target "(none)")))
+                     (if (and target
+                              (media-url? target)
+                              (< redirects max-redirects))
+                       (loop target (1+ redirects))
+                       (error-page 502))))
+                  (else (error-page 404))))))))
       (error-page 400))))

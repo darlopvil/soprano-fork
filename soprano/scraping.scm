@@ -18,11 +18,21 @@
 
 (define-module (soprano scraping)
   #:use-module (json)
+  #:use-module (web uri)
   #:use-module (srfi srfi-1)
   #:export (proxy get-gif get-search search-cursor more-results))
 
+;; Characters left as they are in the url parameter of proxy links.  ':' and
+;; '/' are safe inside a query and keep the links readable; everything else
+;; outside this set is percent-encoded, so a media URL with its own '?', '&',
+;; '+' or '%' reaches the proxy unchanged.
+(define url-parameter-chars
+  (string->char-set
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/"))
+
 (define (proxy url)
-  (string-append "/proxy?url=" url))
+  (string-append "/proxy?url="
+                 (uri-encode url #:unescaped-chars url-parameter-chars)))
 
 ;; Tenor pages embed the data they render as JSON, in
 ;; <script id="store-cache" type="text/x-cache">.  Reading it is far more

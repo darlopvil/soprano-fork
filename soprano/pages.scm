@@ -20,6 +20,7 @@
   #:use-module (soprano scraping)
   #:use-module (soprano templates)
   #:use-module (soprano upstream)
+  #:use-module (soprano cache)
   #:use-module (htmlprag)
   #:use-module (web response)
   #:use-module (web client)
@@ -97,11 +98,23 @@
       (string-append "/" (cadr parts))
       "")))
 
-(define (generic-page procedure path)
-  (parameterize ((current-locale (locale-prefix path)))
-    (generic-page* procedure path)))
+;; How long a rendered page stays cached, in seconds: the values Tenor's own
+;; pages advertise in their config (VIEW_PAGE_TTL, SEARCH_PAGE_TTL).
+(define gif-page-ttl 3600)
+(define search-page-ttl 600)
 
-(define (generic-page* procedure path)
+;; Pages are cached by path: the same path always maps to the same Tenor page,
+;; and the locale is part of the path.
+(define (generic-page procedure path ttl)
+  (let ((cached (cache-ref path)))
+    (if cached
+      (begin
+        (display ";\tCache: hit")
+        (values good-response cached))
+      (parameterize ((current-locale (locale-prefix path)))
+        (generic-page* procedure path ttl)))))
+
+(define (generic-page* procedure path ttl)
   (with-upstream-errors
     (lambda ()
       (let ((resp "")
@@ -113,10 +126,11 @@
         (display (string-append ";\tStatus: "
                                 (number->string (response-code resp))))
         (cond ((equal? (response-code resp) 200)
-               (values good-response
-                       (string-replace-substring
-                         (shtml->html (procedure body))
-                         "&amp;" "&")))
+               (let ((html (string-replace-substring
+                             (shtml->html (procedure body))
+                             "&amp;" "&")))
+                 (cache-put! path html ttl)
+                 (values good-response html)))
               ((and (>= (response-code resp) 300)
                     (<= (response-code resp) 399))
                (redirect resp (response-code resp)))
@@ -124,11 +138,11 @@
 
 (define (gif-page path)
   (display ";\tHandler: gif-page")
-  (generic-page gif-template path))
+  (generic-page gif-template path gif-page-ttl))
 
 (define (search-page path)
   (display ";\tHandler: search-page")
-  (generic-page search-template path))
+  (generic-page search-template path search-page-ttl))
 
 ;; Search box text -> Tenor's search slug, or #f when there are no words.
 ;; Forms encode spaces as '+', which becomes a space before percent-decoding,

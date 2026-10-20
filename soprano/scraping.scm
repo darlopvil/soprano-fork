@@ -59,6 +59,31 @@
   (let ((flags (ref gif "flags")))
     (and (vector? flags) (member "sticker" (vector->list flags)) #t)))
 
+(define (media-width gif name)
+  (ref gif "media_formats" name "dims" 0))
+
+;; Thumbnails are always images, never videos: hardened browsers block video
+;; autoplay, even muted, and a frontend must not ask people to loosen their
+;; browser settings.  Stickers keep a transparent image.  Everything else
+;; prefers tinywebp, much lighter than tinygif, but only when it is wide
+;; enough for a ~200px column: tinywebp fits a 200x200 box, so tall images
+;; come out very narrow.  Those use the full-size webp instead, which is
+;; still lighter than tinygif.  -> (url width height), or #f.
+(define (thumbnail gif)
+  (let ((name (find (lambda (name) (ref gif "media_formats" name "url"))
+                    (cond ((sticker? gif)
+                           '("tinywebp_transparent" "tinygif_transparent"
+                             "tinygif"))
+                          ((let ((width (media-width gif "tinywebp")))
+                             (and (real? width) (>= width 180)))
+                           '("tinywebp"))
+                          (else
+                           '("webp" "tinygif"))))))
+    (and name
+         (list (ref gif "media_formats" name "url")
+               (media-width gif name)
+               (ref gif "media_formats" name "dims" 1)))))
+
 ;; "https://tenor.com/view/..." -> "/view/..."
 (define (local-path url)
   (and (string? url)
@@ -91,18 +116,15 @@
         (and (= (car ka) (car kb))
              (< (cdr ka) (cdr kb))))))
 
-;; -> list of (local-link . thumbnail-url)
+;; -> list of (local-link url width height), see thumbnail
 (define (get-search body)
   (let ((results (ref (first-value (ref (store-cache body) "universal" "search"))
                       "results")))
     (filter-map
       (lambda (gif)
         (let ((href (local-path (ref gif "itemurl")))
-              (src (if (sticker? gif)
-                     (media-url gif "tinywebp_transparent"
-                                "tinygif_transparent" "tinygif")
-                     (media-url gif "tinygif" "tinywebp"))))
-          (and href src (cons href src))))
+              (thumb (thumbnail gif)))
+          (and href thumb (cons href thumb))))
       (if (vector? results)
         (sort (vector->list results) layout<?)
         '()))))

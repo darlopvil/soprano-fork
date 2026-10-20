@@ -96,18 +96,28 @@
                      (loading "lazy")))
              ,footer))))
 
+;; Width and height let the browser reserve space before the image loads, so
+;; the grid does not jump around while thumbnails arrive.
+(define (size-attributes width height)
+  (if (and (integer? width) (integer? height))
+    `((width ,(number->string width)) (height ,(number->string height)))
+    '()))
+
 (define (search-template d)
   `(html ,(html-head "Search")
          (body
            ,heading
            (h1 "Search")
            (div (@ (class "search list"))
-                ,(map (lambda (p)
-                        (if (not (string-prefix? "/gif-maker" (car p)))
-                          `(a (@ (href ,(car p)))
-                              (img (@ (src ,(proxy (cdr p)))
-                                      (loading "lazy"))))
-                          '()))
+                ,(map (lambda (result)
+                        (let ((href (car result))
+                              (src (proxy (cadr result)))
+                              (size (size-attributes (caddr result)
+                                                     (cadddr result))))
+                          (if (not (string-prefix? "/gif-maker" href))
+                            `(a (@ (href ,href))
+                                (img (@ (src ,src) ,@size (loading "lazy"))))
+                            '())))
                       (get-search d)))
            ,footer)))
 

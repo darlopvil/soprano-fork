@@ -1,4 +1,5 @@
 ;; Copyright (C) 2024-2025 Skylar Astaroth <cobra@vern.cc>
+;; Copyright (C) 2026 darlopvil (modified for soprano-fork)
 ;;
 ;; This file is part of Soprano
 ;;
@@ -44,14 +45,27 @@
                            (autofocus)))
                  (button "Go"))))
 
+(define (env-or name default)
+  (let ((value (getenv name)))
+    (if (and value (not (string-null? value)))
+      value
+      default)))
+
+(define source-url
+  (env-or "SOURCE_URL" "https://github.com/darlopvil/soprano-fork"))
+
 (define footer
   `(footer
-     (p (a (@ (href "https://git.vern.cc/cobra/Soprano"))
+     (p (a (@ (href ,source-url))
            "Source Code"))
      ,(if (getenv "PATCHES_URL")
         `(p (a (@ (href ,(getenv "PATCHES_URL")))
                "Patches"))
-        `())))
+        `())
+     (p "Based on "
+        (a (@ (href "https://codeberg.org/cobra/Soprano"))
+           "Soprano")
+        " by Skylar Astaroth")))
 
 (define (index-template host)
   `(html ,(html-head "Soprano")

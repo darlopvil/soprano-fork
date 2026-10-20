@@ -1,6 +1,8 @@
 # Soprano
 Soprano is a privacy-respecting frontend to Tenor
 
+This is a modified fork of [Soprano](https://codeberg.org/cobra/Soprano) by Skylar Astaroth, licensed under the GNU AGPL v3 or later. See the commit history for the changes made in this fork.
+
 This project is incomplete. The only supported endpoints are /view (gif) and /search (search).
 
 # Support
@@ -34,3 +36,5 @@ You will need need `guile`, `guile-gnutls`, and `guile-lib`.
 The following are optional.
 
 `PORT` - What port to run on (default `8005`).
+
+`SOURCE_URL` - Where the "Source Code" link in the footer points (default: this fork). If you run a modified copy, the AGPL requires you to offer its source, so point this at your own repository.

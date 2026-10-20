@@ -27,7 +27,8 @@
   #:use-module (web uri)
   #:use-module (ice-9 receive)
   #:use-module (ice-9 string-fun)
-  #:export (error-page
+  #:export (locale?
+            error-page
             index-page
             gif-page
             search-page
@@ -78,7 +79,29 @@
                    "")))
       (error-page (if (eq? key 'upstream-timeout) 504 502)))))
 
+;; Tenor locales are path prefixes: two letters ("es") or two letters, a
+;; dash and two letters ("es-es"; Tenor redirects "es-ES" there).
+(define (locale? segment)
+  (let ((n (string-length segment)))
+    (and (or (= n 2) (and (= n 5) (char=? (string-ref segment 2) #\-)))
+         (char-alphabetic? (string-ref segment 0))
+         (char-alphabetic? (string-ref segment 1))
+         (or (= n 2)
+             (and (char-alphabetic? (string-ref segment 3))
+                  (char-alphabetic? (string-ref segment 4)))))))
+
+;; "/es/view/..." -> "/es", anything else -> ""
+(define (locale-prefix path)
+  (let ((parts (string-split path #\/)))
+    (if (and (>= (length parts) 3) (locale? (cadr parts)))
+      (string-append "/" (cadr parts))
+      "")))
+
 (define (generic-page procedure path)
+  (parameterize ((current-locale (locale-prefix path)))
+    (generic-page* procedure path)))
+
+(define (generic-page* procedure path)
   (with-upstream-errors
     (lambda ()
       (let ((resp "")
@@ -107,20 +130,29 @@
   (display ";\tHandler: search-page")
   (generic-page search-template path))
 
-(define (search-redirect-page query)
+;; Search box text -> Tenor's search slug, or #f when there are no words.
+;; Tenor reads '-' in the slug as a space, so words are joined with '-'.
+;; Forms encode spaces as '+', which becomes a space before percent-decoding,
+;; so an actual plus sign (sent as %2B) is kept.
+(define (search-slug raw)
+  (let* ((spaced (string-map (lambda (c) (if (char=? c #\+) #\space c)) raw))
+         (text (catch #t (lambda () (uri-decode spaced)) (lambda _ spaced)))
+         (words (string-tokenize text (char-set-complement char-set:whitespace))))
+    (and (pair? words) (string-join words "-"))))
+
+;; PREFIX is the locale prefix ("" or e.g. "/es") the search came from.
+(define (search-redirect-page query prefix)
   (display ";\tHandler: search-redirect-page")
-  (let ((q (or (query-ref query "q") "")))
+  (let ((slug (search-slug (or (query-ref query "q") ""))))
     (values (build-response
               #:code 301
               #:headers `((location .
                             ,(parse-header
                                'location
-                               (if (string-null? q)
-                                 "/"
-                                 (string-append
-                                   "/search/"
-                                   (string-replace-substring q " " "-")
-                                   "-gifs"))))))
+                               (if slug
+                                 (string-append prefix "/search/"
+                                                (uri-encode slug) "-gifs")
+                                 "/")))))
             "Redirect")))
 
 (define (index-page host)

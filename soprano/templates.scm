@@ -20,7 +20,8 @@
   #:use-module (soprano scraping)
   #:use-module (htmlprag)
   #:use-module (web uri)
-  #:export (error-template
+  #:export (current-locale
+            error-template
             index-template
             gif-template
             search-template))
@@ -33,13 +34,17 @@
          (link (@ (rel "stylesheet") (href "/style.css")))
          (link (@ (rel "icon") (type "image/png") (href "/favicon.png")))))
 
-(define heading
+;; Locale prefix of the page being built ("" or e.g. "/es"), so searching
+;; from a localized page stays in that locale.
+(define current-locale (make-parameter ""))
+
+(define (heading)
   `(header (a (@ (href "/"))
               (img (@ (src "/favicon.png"))))
            (form (@ (id "search")
                     (role "search")
                     (method "get")
-                    (action "/search"))
+                    (action ,(string-append (current-locale) "/search")))
                  (input (@ (type "search")
                            (id "q")
                            (name "q")
@@ -72,7 +77,7 @@
 (define (index-template host)
   `(html ,(html-head "Soprano")
          (body
-           ,heading
+           ,(heading)
            (h1 "Soprano")
            (p "Soprano is a privacy-respecting front-end to Tenor.")
            (br)
@@ -118,7 +123,7 @@
          (downloads (assq-ref gif 'downloads)))
     `(html ,(html-head title)
            (body
-             ,heading
+             ,(heading)
              (h1 ,title)
              (img (@ (alt ,title)
                      (src ,(proxy (car image)))
@@ -129,7 +134,7 @@
 (define (search-template d)
   `(html ,(html-head "Search")
          (body
-           ,heading
+           ,(heading)
            (h1 "Search")
            (div (@ (class "search list"))
                 ,(map (lambda (result)
@@ -155,7 +160,7 @@
 (define (error-template code)
   `(html ,(html-head (number->string code))
          (body
-           ,heading
+           ,(heading)
            (h1 ,(number->string code))
            ,(let ((message (error-message code)))
               (if message `(p ,message) '()))

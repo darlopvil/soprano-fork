@@ -72,18 +72,18 @@
       ((equal? (car path-components) "search")
        (if (>= (length path-components) 2)
          (search-page path)
-         (search-redirect-page (uri-query uri))))
+         (search-redirect-page (uri-query uri) "")))
       ((and
          (>= (length path-components) 2)
-         (equal? (string-length (car path-components)) 5)
-         (equal? (caddr (string->list (car path-components))) #\-))
+         (locale? (car path-components)))
        (cond
          ((equal? (cadr path-components) "view")
           (gif-page path))
          ((equal? (cadr path-components) "search")
           (if (>= (length path-components) 3)
             (search-page path)
-            (search-redirect-page (uri-query uri))))
+            (search-redirect-page (uri-query uri)
+                                  (string-append "/" (car path-components)))))
          (else (error-page 404))))
       (else (error-page 404)))))
 

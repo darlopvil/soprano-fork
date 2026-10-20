@@ -17,26 +17,92 @@
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (soprano scraping)
-  #:use-module (sxml xpath)
+  #:use-module (json)
   #:use-module (srfi srfi-1)
   #:export (proxy get-gif get-search))
 
 (define (proxy url)
   (string-append "/proxy?url=" url))
 
-(define (get-gif d)
-  (let ((pref '(html body div div div div)))
-    (append
-      ((sxpath (append pref '(h1 *text*))) d)
-      ((sxpath (append pref '(div div div div div img @ src *text*))) d))))
+;; Tenor pages embed the data they render as JSON, in
+;; <script id="store-cache" type="text/x-cache">.  Reading it is far more
+;; robust than walking the DOM through absolute element paths, and it holds
+;; every result, every media format, tags and related GIFs.
+(define (store-cache body)
+  (let* ((tag (string-contains body "<script id=\"store-cache\""))
+         (start (and tag (string-index body #\> tag)))
+         (end (and start (string-contains body "</script>" start))))
+    (if end
+      (json-string->scm (substring body (1+ start) end))
+      (throw 'store-cache-missing))))
 
-;; Link and image are paired within each result card, so a card without an
-;; image is skipped instead of shifting (or crashing) every pair after it.
-(define (get-search d)
-  (filter-map
-    (lambda (card)
-      (let ((href ((sxpath '(@ href *text*)) card))
-            (src ((sxpath '(div // img @ src *text*)) card)))
-        (and (pair? href) (pair? src)
-             (cons (car href) (car src)))))
-    ((sxpath '(// figure a)) d)))
+;; Nested lookup: string keys index JSON objects (alists), numbers index
+;; arrays (vectors).  Returns #f as soon as something is missing.
+(define (ref data . keys)
+  (fold (lambda (key data)
+          (cond ((not data) #f)
+                ((and (string? key) (list? data)) (assoc-ref data key))
+                ((and (integer? key) (vector? data) (< key (vector-length data)))
+                 (vector-ref data key))
+                (else #f)))
+        data
+        keys))
+
+;; Value of the only (or first) member of a JSON object.
+(define (first-value data)
+  (and (pair? data) (pair? (car data)) (cdar data)))
+
+(define (media-url gif . formats)
+  (any (lambda (name) (ref gif "media_formats" name "url")) formats))
+
+(define (sticker? gif)
+  (let ((flags (ref gif "flags")))
+    (and (vector? flags) (member "sticker" (vector->list flags)) #t)))
+
+;; "https://tenor.com/view/..." -> "/view/..."
+(define (local-path url)
+  (and (string? url)
+       (string-prefix? "https://tenor.com/" url)
+       (substring url (string-length "https://tenor.com"))))
+
+;; -> (title media-url)
+(define (get-gif body)
+  (let* ((gif (ref (first-value (ref (store-cache body) "gifs" "byId"))
+                   "results" 0))
+         (title (ref gif "h1_title"))
+         (url (media-url gif "mediumgif" "gif")))
+    (if (and (string? title) url)
+      (list title url)
+      (throw 'gif-missing))))
+
+;; Tenor lays search results out in columns and lists them column by column
+;; in its HTML.  Sorting by that layout keeps the order Soprano always showed;
+;; without layout details, results keep Tenor's ranking order (sort is stable).
+(define (layout-key gif)
+  (let ((column (ref gif "details" "column"))
+        (y (ref gif "details" "y")))
+    (cons (if (real? column) column 0)
+          (if (real? y) y 0))))
+
+(define (layout<? a b)
+  (let ((ka (layout-key a))
+        (kb (layout-key b)))
+    (or (< (car ka) (car kb))
+        (and (= (car ka) (car kb))
+             (< (cdr ka) (cdr kb))))))
+
+;; -> list of (local-link . thumbnail-url)
+(define (get-search body)
+  (let ((results (ref (first-value (ref (store-cache body) "universal" "search"))
+                      "results")))
+    (filter-map
+      (lambda (gif)
+        (let ((href (local-path (ref gif "itemurl")))
+              (src (if (sticker? gif)
+                     (media-url gif "tinywebp_transparent"
+                                "tinygif_transparent" "tinygif")
+                     (media-url gif "tinygif" "tinywebp"))))
+          (and href src (cons href src))))
+      (if (vector? results)
+        (sort (vector->list results) layout<?)
+        '()))))

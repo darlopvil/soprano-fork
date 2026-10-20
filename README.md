@@ -15,7 +15,7 @@ See instances.json
 ## Dependencies
 This program is written in Guile Scheme.
 
-You will need need `guile`, `guile-gnutls`, and `guile-lib`.
+You will need `guile`, `guile-gnutls`, `guile-lib`, and `guile-json`.
 
 ## Running
 ### Bare metal

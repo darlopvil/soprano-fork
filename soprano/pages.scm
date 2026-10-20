@@ -90,11 +90,10 @@
         (display (string-append ";\tStatus: "
                                 (number->string (response-code resp))))
         (cond ((equal? (response-code resp) 200)
-               (let ((doc (html->sxml-0nf body #:strict? #t)))
-                 (values good-response
-                         (string-replace-substring
-                           (shtml->html (procedure doc))
-                           "&amp;" "&"))))
+               (values good-response
+                       (string-replace-substring
+                         (shtml->html (procedure body))
+                         "&amp;" "&")))
               ((and (>= (response-code resp) 300)
                     (<= (response-code resp) 399))
                (redirect resp (response-code resp)))

@@ -16,11 +16,17 @@ This program is written in Guile Scheme.
 You will need need `guile`, `guile-gnutls`, and `guile-lib`.
 
 ## Running
+### Bare metal
 0. Install the dependencies
-1. Clone the repository using `git clone --recurse-submodules https://git.vern.cc/cobra/Soprano`
-2. Run `guile soprano.scm`
+1. Clone the repository using `git clone https://github.com/darlopvil/soprano-fork.git`
+2. Run `guile soprano.scm` from the repository root
 3. Connect to http://localhost:8005 (or point your reverse proxy to it)
 4. Profit
+
+### Docker
+1. Clone the repository and `cd` into it
+2. `cp docker-compose.yml.example docker-compose.yml` and adapt it to your setup
+3. Run `docker compose up -d --build`
 
 ## Environment
 `PATCHES_URL` - Link to any patches that were applied. Necessary if there are any. Do not set if there aren't.

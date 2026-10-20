@@ -1,0 +1,10 @@
+services:
+  soprano:
+    build: .
+    image: soprano:local
+    container_name: soprano
+    restart: unless-stopped
+    environment:
+      - PORT=8005
+    ports:
+      - "127.0.0.1:8005:8005"

@@ -50,6 +50,12 @@
                   ,(parse-header 'cache-control
                                  "max-age=604800")))
                (call-with-input-file "static/logo.png" get-bytevector-all)))
+      ;; Crawlers must not walk the instance: every page they fetched here
+      ;; would become a request to Tenor from the instance's address.
+      ((equal? path "/robots.txt")
+       (display ";\tHandler: internal") (newline)
+       (values `((content-type . (text/plain)))
+               "User-agent: *\nDisallow: /\n"))
       ((equal? path "/proxy")
        (proxy-page (uri-query uri)))
       ((equal? path "/")
@@ -79,7 +85,7 @@
             (search-page path)
             (search-redirect-page (uri-query uri))))
          (else (error-page 404))))
-      (else (error-page 501)))))
+      (else (error-page 404)))))
 
 (let ((port (if (getenv "PORT")
               (string->number (getenv "PORT"))

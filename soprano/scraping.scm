@@ -19,7 +19,7 @@
 (define-module (soprano scraping)
   #:use-module (json)
   #:use-module (srfi srfi-1)
-  #:export (proxy get-gif get-search))
+  #:export (proxy get-gif get-search search-cursor more-results))
 
 (define (proxy url)
   (string-append "/proxy?url=" url))
@@ -190,3 +190,17 @@
       (if (vector? results)
         (sort (vector->list results) layout<?)
         '()))))
+
+;; Cursor for the next page of a search, or #f.
+(define (search-cursor body)
+  (let ((next (ref (first-value (ref (store-cache body) "universal" "search"))
+                   "next")))
+    (and (string? next) (not (string-null? next)) next)))
+
+;; A page of results from Tenor's API (see (soprano api)), in its ranking
+;; order: there is no layout to follow.  -> (thumbnails . next-cursor-or-#f)
+(define (more-results data)
+  (let ((results (ref data "results"))
+        (next (ref data "next")))
+    (cons (thumbnails (if (vector? results) (vector->list results) '()))
+          (and (string? next) (not (string-null? next)) next))))

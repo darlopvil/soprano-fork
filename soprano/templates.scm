@@ -18,15 +18,18 @@
 
 (define-module (soprano templates)
   #:use-module (soprano scraping)
+  #:use-module (soprano api)
   #:use-module (htmlprag)
   #:use-module (web uri)
   #:use-module (srfi srfi-1)
   #:export (current-locale
+            current-path
             words->slug
             error-template
             index-template
             gif-template
-            search-template))
+            search-template
+            more-template))
 
 (define (html-head title)
   `(head (title ,(if title (string-append title " - Soprano") "Soprano"))
@@ -39,6 +42,9 @@
 ;; Locale prefix of the page being built ("" or e.g. "/es"), so searching
 ;; from a localized page stays in that locale.
 (define current-locale (make-parameter ""))
+
+;; Path of the page being built, without query: the base of "Next page" links.
+(define current-path (make-parameter "/"))
 
 ;; Every page: a real doctype (without one, browsers render in quirks mode),
 ;; a language and the shared head.  TITLE #f is the plain "Soprano".
@@ -198,11 +204,29 @@
             '())
           footer)))
 
+;; "Next page", when Tenor gave a cursor and more results can be fetched.
+(define (next-link cursor)
+  (if (and cursor (more-results-available?))
+    `(p (@ (class "more"))
+        (a (@ (href ,(string-append (current-path) "?pos=" (uri-encode cursor))))
+           "Next page →"))
+    '()))
+
 (define (search-template d)
   (page "Search"
         (heading)
         '(h1 "Search")
         (thumbnail-grid (get-search d))
+        (next-link (search-cursor d))
+        footer))
+
+;; A further page of a search: (thumbnails . next-cursor), see more-results.
+(define (more-template results)
+  (page "Search"
+        (heading)
+        '(h1 "Search")
+        (thumbnail-grid (car results))
+        (next-link (cdr results))
         footer))
 
 (define (error-message code)
@@ -210,6 +234,7 @@
     ((400) "Bad request.")
     ((404) "Not found.")
     ((502) "Tenor could not be reached, or sent something Soprano could not read.")
+    ((503) "More results are not available right now.")
     ((504) "Tenor took too long to answer.")
     (else #f)))
 

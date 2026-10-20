@@ -21,6 +21,7 @@
   #:use-module (soprano templates)
   #:use-module (soprano upstream)
   #:use-module (soprano cache)
+  #:use-module (soprano api)
   #:use-module (htmlprag)
   #:use-module (web response)
   #:use-module (web client)
@@ -78,7 +79,10 @@
                  (if (pair? args)
                    (string-append " (" (object->string (car args)) ")")
                    "")))
-      (error-page (if (eq? key 'upstream-timeout) 504 502)))))
+      (error-page (case key
+                    ((upstream-timeout) 504)
+                    ((more-unavailable) 503)
+                    (else 502))))))
 
 ;; Tenor locales are path prefixes: two letters ("es") or two letters, a
 ;; dash and two letters ("es-es"; Tenor redirects "es-ES" there).
@@ -111,7 +115,8 @@
       (begin
         (display ";\tCache: hit")
         (values good-response cached))
-      (parameterize ((current-locale (locale-prefix path)))
+      (parameterize ((current-locale (locale-prefix path))
+                     (current-path path))
         (generic-page* procedure path ttl)))))
 
 (define (generic-page* procedure path ttl)
@@ -126,6 +131,7 @@
         (display (string-append ";\tStatus: "
                                 (number->string (response-code resp))))
         (cond ((equal? (response-code resp) 200)
+               (learn-api-config! body)
                (let ((html (string-replace-substring
                              (shtml->html (procedure body))
                              "&amp;" "&")))
@@ -140,9 +146,65 @@
   (display ";\tHandler: gif-page")
   (generic-page gif-template path gif-page-ttl))
 
-(define (search-page path)
+(define (search-page path query)
   (display ";\tHandler: search-page")
-  (generic-page search-template path search-page-ttl))
+  (let ((pos (query-ref query "pos")))
+    (if (and pos (not (string-null? pos)))
+      (more-page path (uri-decode pos))
+      (generic-page search-template path search-page-ttl))))
+
+;; "/es/search/hello-world-gifs" -> "hello world": Tenor reads '-' in the
+;; slug as a space.  #f for paths that are not a GIF search.
+(define (path->query path)
+  (let ((slug (car (last-pair (string-split path #\/)))))
+    (and (string-suffix? "-gifs" slug)
+         (> (string-length slug) 5)
+         (string-map (lambda (c) (if (char=? c #\-) #\space c))
+                     (catch #t
+                       (lambda ()
+                         (uri-decode (string-drop-right slug 5)))
+                       (lambda _ (string-drop-right slug 5)))))))
+
+;; Tenor's API locale for a locale prefix: "/es" -> "es", "/es-es" -> "es_ES".
+(define (api-locale prefix)
+  (cond ((string-null? prefix) #f)
+        ((= (string-length prefix) 3) (substring prefix 1))
+        (else (string-append (substring prefix 1 3) "_"
+                             (string-upcase (substring prefix 4 6))))))
+
+;; A further page of a search, from Tenor's cursor POS (see (soprano api)).
+(define (more-page path pos)
+  (let ((cache-key (string-append path "?pos=" pos))
+        (q (path->query path)))
+    (cond
+      ((not q) (error-page 404))
+      ((cache-ref cache-key)
+       => (lambda (html)
+            (display ";\tCache: hit")
+            (values good-response html)))
+      (else
+       (parameterize ((current-locale (locale-prefix path))
+                      (current-path path))
+         (with-upstream-errors
+           (lambda ()
+             ;; After a restart the API config is not known yet: it comes
+             ;; with Tenor's pages, so load the first page of this search.
+             (unless (api-config-known?)
+               (display ";\tMore: learning config")
+               (receive (response body)
+                   (fetch (string-append "https://tenor.com" path))
+                 (when (= (response-code response) 200)
+                   (learn-api-config! body))))
+             (display ";\tMore: api")
+             (let ((html (string-replace-substring
+                           (shtml->html
+                             (more-template
+                               (more-results
+                                 (search-more q pos
+                                              (api-locale (current-locale))))))
+                           "&amp;" "&")))
+               (cache-put! cache-key html search-page-ttl)
+               (values good-response html)))))))))
 
 ;; Search box text -> Tenor's search slug, or #f when there are no words.
 ;; Forms encode spaces as '+', which becomes a space before percent-decoding,

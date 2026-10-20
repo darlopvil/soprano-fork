@@ -111,9 +111,19 @@
                       (get-search d)))
            ,footer)))
 
+(define (error-message code)
+  (case code
+    ((400) "Bad request.")
+    ((404) "Not found.")
+    ((502) "Tenor could not be reached, or sent something Soprano could not read.")
+    ((504) "Tenor took too long to answer.")
+    (else #f)))
+
 (define (error-template code)
   `(html ,(html-head (number->string code))
          (body
            ,heading
            (h1 ,(number->string code))
+           ,(let ((message (error-message code)))
+              (if message `(p ,message) '()))
            ,footer)))

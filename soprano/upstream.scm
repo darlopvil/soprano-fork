@@ -71,35 +71,56 @@
                     watched))))
   (watchdog))
 
+;; connect() returns #f when SO_SNDTIMEO expires, and throws when the
+;; connection is refused or unreachable.
 (define (connect-any uri)
   (let loop ((addresses (if (uri-port uri)
                           (getaddrinfo (uri-host uri)
                                        (number->string (uri-port uri))
                                        AI_NUMERICSERV)
-                          (getaddrinfo (uri-host uri) "https"))))
+                          (getaddrinfo (uri-host uri) "https")))
+             (timed-out? #f))
     (let* ((ai (car addresses))
            (sock (socket (addrinfo:fam ai) SOCK_STREAM IPPROTO_IP)))
       (setsockopt sock SOL_SOCKET SO_SNDTIMEO (cons connect-timeout 0))
-      (if (catch 'system-error
-            (lambda () (connect sock (addrinfo:addr ai)))
-            (const #f))
-        sock
-        (begin
-          (close-port sock)
-          (if (null? (cdr addresses))
-            (throw 'upstream-error "cannot connect" (uri-host uri))
-            (loop (cdr addresses))))))))
+      (let ((result (catch 'system-error
+                      (lambda () (if (connect sock (addrinfo:addr ai))
+                                   'connected
+                                   'timeout))
+                      (const 'failed))))
+        (if (eq? result 'connected)
+          sock
+          (let ((timed-out? (or timed-out? (eq? result 'timeout))))
+            (close-port sock)
+            (if (null? (cdr addresses))
+              (throw (if timed-out? 'upstream-timeout 'upstream-error)
+                     'connect)
+              (loop (cdr addresses) timed-out?))))))))
 
 ;; Same contract as (http-request url): returns the response and its body.
+;; Every failure is rethrown as 'upstream-timeout when a timeout or the
+;; deadline was hit, and as 'upstream-error otherwise, with the original
+;; error key as its argument.
 (define (fetch url)
-  (let* ((uri (string->uri url))
-         (sock (connect-any uri)))
-    (watch! sock)
-    (dynamic-wind
-      (const #t)
+  (let ((start (current-time)))
+    (catch #t
       (lambda ()
-        (setvbuf sock 'block 65536)
-        (http-request uri #:port (tls-wrap sock (uri-host uri))))
-      (lambda ()
-        (unwatch! sock)
-        (close-port sock)))))
+        (let* ((uri (string->uri url))
+               (sock (connect-any uri)))
+          (watch! sock)
+          (dynamic-wind
+            (const #t)
+            (lambda ()
+              (setvbuf sock 'block 65536)
+              (http-request uri #:port (tls-wrap sock (uri-host uri))))
+            (lambda ()
+              (unwatch! sock)
+              (close-port sock)))))
+      (lambda (key . args)
+        (cond
+          ((memq key '(upstream-timeout upstream-error))
+           (apply throw key args))
+          ((>= (- (current-time) start) request-deadline)
+           (throw 'upstream-timeout key))
+          (else
+           (throw 'upstream-error key)))))))

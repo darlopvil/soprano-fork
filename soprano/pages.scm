@@ -53,25 +53,52 @@
             #:headers `((content-type . (text/html))))
           (shtml->html (error-template code))))
 
+;; Raw (undecoded) value of KEY in a query string, or #f.  Tolerates a
+;; missing query, empty parts and parameters without '='.
+(define (query-ref query key)
+  (let ((prefix (string-append key "=")))
+    (and query
+         (let loop ((parts (string-split query #\&)))
+           (cond ((null? parts) #f)
+                 ((string-prefix? prefix (car parts))
+                  (substring (car parts) (string-length prefix)))
+                 (else (loop (cdr parts))))))))
+
+;; Runs THUNK, which talks to Tenor and builds a page.  Any failure becomes
+;; an error page (504 on timeout, 502 otherwise) instead of an uncaught
+;; exception, which Guile answers with a blank 500.
+(define (with-upstream-errors thunk)
+  (catch #t
+    thunk
+    (lambda (key . args)
+      (display (string-append
+                 ";\tUpstream: " (symbol->string key)
+                 (if (pair? args)
+                   (string-append " (" (object->string (car args)) ")")
+                   "")))
+      (error-page (if (eq? key 'upstream-timeout) 504 502)))))
+
 (define (generic-page procedure path)
-  (let ((resp "")
-        (body ""))
-    (receive (_resp _body)
-             (fetch (string-append "https://tenor.com" path))
-             (set! resp _resp)
-             (set! body _body))
-    (display (string-append ";\tStatus: "
-                            (number->string (response-code resp))))
-    (newline)
-    (cond ((equal? (response-code resp) 200)
-           (let ((doc (html->sxml-0nf body #:strict? #t)))
-             (values good-response
-                     (string-replace-substring
-                       (shtml->html (procedure doc))
-                       "&amp;" "&"))))
-          ((and (>= (response-code resp) 300) (<= (response-code resp) 399))
-           (redirect resp (response-code resp)))
-          (else (error-page (response-code resp))))))
+  (with-upstream-errors
+    (lambda ()
+      (let ((resp "")
+            (body ""))
+        (receive (_resp _body)
+                 (fetch (string-append "https://tenor.com" path))
+                 (set! resp _resp)
+                 (set! body _body))
+        (display (string-append ";\tStatus: "
+                                (number->string (response-code resp))))
+        (cond ((equal? (response-code resp) 200)
+               (let ((doc (html->sxml-0nf body #:strict? #t)))
+                 (values good-response
+                         (string-replace-substring
+                           (shtml->html (procedure doc))
+                           "&amp;" "&"))))
+              ((and (>= (response-code resp) 300)
+                    (<= (response-code resp) 399))
+               (redirect resp (response-code resp)))
+              (else (error-page (response-code resp))))))))
 
 (define (gif-page path)
   (display ";\tHandler: gif-page")
@@ -83,22 +110,18 @@
 
 (define (search-redirect-page query)
   (display ";\tHandler: search-redirect-page")
-  (let ((q ""))
-    (map (lambda (p)
-           (if (equal? (car p) "q")
-             (set! q (cadr p))))
-         (map (lambda (s)
-                (string-split s #\=))
-              (string-split query #\&)))
+  (let ((q (or (query-ref query "q") "")))
     (values (build-response
               #:code 301
               #:headers `((location .
                             ,(parse-header
                                'location
-                               (string-append
-                                 "/search/"
-                                 (string-replace-substring q " " "-")
-                                 "-gifs")))))
+                               (if (string-null? q)
+                                 "/"
+                                 (string-append
+                                   "/search/"
+                                   (string-replace-substring q " " "-")
+                                   "-gifs"))))))
             "Redirect")))
 
 (define (index-page host)
@@ -106,45 +129,38 @@
   (values good-response (shtml->html (index-template host))))
 
 (define (proxy-page query)
-  (display ";\tHandler: proxy-page") (newline)
+  (display ";\tHandler: proxy-page")
   (let ((resp "")
         (body "")
-        (url "")
-        (sub ""))
-    (map (lambda (p)
-           (if (equal? (car p) "url")
-             (set! url (uri-decode (cadr p))))
-           (if (equal? (car p) "sub")
-             (set! sub (cadr p))))
-         (map (lambda (s)
-                (string-split s #\=))
-              (string-split query #\&)))
+        (url (uri-decode (or (query-ref query "url") ""))))
     (if (or (string-prefix? "https://media1.tenor.com/" url)
             (string-prefix? "https://media.tenor.com/" url))
-      (begin
-        (receive (_resp _body) (fetch url)
-                 (set! resp _resp)
-                 (set! body _body))
-        (cond
-          ((equal? (response-code resp) 200)
-           (values (build-response
-                     #:code 200
-                     #:headers `((content-type .
-                                  ,(response-content-type resp))
-                                 (cache-control .
-                                  ,(parse-header 'cache-control
-                                                 "max-age=604800"))))
-                   body))
-          ((and (>= (response-code resp) 300) (<= (response-code resp) 399))
-           (values (build-response
-                     #:code (response-code resp)
-                     #:headers `((location . ,(parse-header
-                                                'location
-                                                (uri-path
-                                                  (response-location
-                                                    resp))))
-                                 (content-type .
-                                  ,(response-content-type resp))))
-          "Redirect"))
-          (else (error-page 404))))
+      (with-upstream-errors
+        (lambda ()
+          (receive (_resp _body) (fetch url)
+                   (set! resp _resp)
+                   (set! body _body))
+          (cond
+            ((equal? (response-code resp) 200)
+             (values (build-response
+                       #:code 200
+                       #:headers `((content-type .
+                                    ,(response-content-type resp))
+                                   (cache-control .
+                                    ,(parse-header 'cache-control
+                                                   "max-age=604800"))))
+                     body))
+            ((and (>= (response-code resp) 300)
+                  (<= (response-code resp) 399))
+             (values (build-response
+                       #:code (response-code resp)
+                       #:headers `((location . ,(parse-header
+                                                  'location
+                                                  (uri-path
+                                                    (response-location
+                                                      resp))))
+                                   (content-type .
+                                    ,(response-content-type resp))))
+                     "Redirect"))
+            (else (error-page 404)))))
       (error-page 400))))

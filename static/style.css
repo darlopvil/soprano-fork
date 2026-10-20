@@ -42,11 +42,20 @@ header form {
 }
 
 div.search.list {
-	columns: 5;
-	column-gap: 0;
+	column-width: 200px;
+	column-gap: 1em;
+}
+
+div.search.list a {
+	display: block;
+	break-inside: avoid;
+	margin-bottom: 1em;
 }
 
 div.search.list img {
-	margin-bottom: 1em;
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	height: auto;
 	background: gray;
 }

@@ -20,7 +20,9 @@
   #:use-module (soprano scraping)
   #:use-module (htmlprag)
   #:use-module (web uri)
+  #:use-module (srfi srfi-1)
   #:export (current-locale
+            words->slug
             error-template
             index-template
             gif-template
@@ -116,19 +118,73 @@
                    ,label)
                 ,@(loop (cdr downloads) #f)))))))
 
+;; Text -> Tenor search slug: its words joined with '-' (Tenor reads '-' as
+;; a space), or #f when there are no words.
+(define (words->slug text)
+  (let ((words (string-tokenize text (char-set-complement char-set:whitespace))))
+    (and (pair? words) (string-join words "-"))))
+
+;; Search page of a tag, in the locale of the current page.
+(define (tag-path tag)
+  (let ((slug (words->slug tag)))
+    (and slug
+         (string-append (current-locale) "/search/" (uri-encode slug) "-gifs"))))
+
+(define (tag-links tags)
+  `(p (@ (class "tags"))
+      ,@(filter-map (lambda (tag)
+                      (let ((path (tag-path tag)))
+                        (and path `(span (a (@ (href ,path)) "#" ,tag) " "))))
+                    tags)))
+
+;; "Uploaded by ... · View on Tenor"
+(define (credits author tenor-url)
+  (let ((parts (filter pair?
+                       (list (if author `("Uploaded by " ,author) '())
+                             (if tenor-url
+                               `((a (@ (href ,tenor-url) (rel "noreferrer"))
+                                    "View on Tenor"))
+                               '())))))
+    (if (null? parts)
+      '()
+      `(p (@ (class "credits"))
+          ,@(car parts)
+          ,@(if (pair? (cdr parts)) `(" · " ,@(cadr parts)) '())))))
+
+;; Grid of result thumbnails, as in search results.
+(define (thumbnail-grid results)
+  `(div (@ (class "search list"))
+        ,(map (lambda (result)
+                (let ((href (car result))
+                      (src (proxy (cadr result)))
+                      (size (size-attributes (caddr result)
+                                             (cadddr result))))
+                  (if (not (string-prefix? "/gif-maker" href))
+                    `(a (@ (href ,href))
+                        (img (@ (src ,src) ,@size (loading "lazy"))))
+                    '())))
+              results)))
+
 (define (gif-template d)
   (let* ((gif (get-gif d))
          (title (assq-ref gif 'title))
          (image (assq-ref gif 'image))
-         (downloads (assq-ref gif 'downloads)))
+         (tags (assq-ref gif 'tags))
+         (downloads (assq-ref gif 'downloads))
+         (related (assq-ref gif 'related)))
     `(html ,(html-head title)
            (body
              ,(heading)
              (h1 ,title)
-             (img (@ (alt ,title)
+             (img (@ (alt ,(or (assq-ref gif 'description) title))
                      (src ,(proxy (car image)))
                      ,@(size-attributes (cadr image) (caddr image))))
+             ,(if (pair? tags) (tag-links tags) '())
+             ,(credits (assq-ref gif 'author) (assq-ref gif 'tenor-url))
              ,(if (pair? downloads) (download-links downloads) '())
+             ,(if (pair? related)
+                `((h2 "Related") ,(thumbnail-grid related))
+                '())
              ,footer))))
 
 (define (search-template d)
@@ -136,17 +192,7 @@
          (body
            ,(heading)
            (h1 "Search")
-           (div (@ (class "search list"))
-                ,(map (lambda (result)
-                        (let ((href (car result))
-                              (src (proxy (cadr result)))
-                              (size (size-attributes (caddr result)
-                                                     (cadddr result))))
-                          (if (not (string-prefix? "/gif-maker" href))
-                            `(a (@ (href ,href))
-                                (img (@ (src ,src) ,@size (loading "lazy"))))
-                            '())))
-                      (get-search d)))
+           ,(thumbnail-grid (get-search d))
            ,footer)))
 
 (define (error-message code)

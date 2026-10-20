@@ -96,26 +96,65 @@
        (string-prefix? "https://tenor.com/" url)
        (substring url (string-length "https://tenor.com"))))
 
+;; -> list of (local-link url width height), see thumbnail.  Results that
+;; cannot be linked or shown are skipped.
+(define (thumbnails results)
+  (filter-map
+    (lambda (gif)
+      (let ((href (local-path (ref gif "itemurl")))
+            (thumb (thumbnail gif)))
+        (and href thumb (cons href thumb))))
+    results))
+
+(define (strings data)
+  (if (vector? data)
+    (filter string? (vector->list data))
+    '()))
+
 ;; The GIF page shows an animated webp: the same animation as mediumgif at the
 ;; same or a higher resolution, about 6 times lighter.  It is an image, so it
 ;; plays in every browser, including those that block video autoplay.
 ;; Tenor's "hasaudio" flag is ignored: none of the media files it serves,
 ;; video ones included, carry an audio track.
-;; -> alist with title, image (url width height) and downloads, a list of
-;; (label . url).
+;; Everything else on the page comes from the same embedded data, so it
+;; costs no extra request to Tenor.  Tenor lists the GIF itself first among
+;; its related GIFs; it is left out.
+;; -> alist with title, description (or #f), image (url width height),
+;; tags, author (or #f), tenor-url (or #f), downloads, a list of
+;; (label . url), and related, see thumbnails.
 (define (get-gif body)
-  (let* ((gif (ref (first-value (ref (store-cache body) "gifs" "byId"))
-                   "results" 0))
+  (let* ((store (store-cache body))
+         (entry (first-value (ref store "gifs" "byId")))
+         (gif (ref entry "results" 0))
+         (id (ref gif "id"))
          (title (ref gif "h1_title"))
-         (image (media gif "webp" "mediumgif" "gif")))
+         (description (ref gif "content_description"))
+         (author (ref gif "user" "username"))
+         (image (media gif "webp" "mediumgif" "gif"))
+         (related (ref (first-value (ref store "gifs" "related")) "results")))
     (if (and (string? title) image)
       `((title . ,title)
+        (description . ,(and (string? description)
+                             (not (string-null? description))
+                             description))
         (image . ,image)
+        (tags . ,(strings (ref gif "tags")))
+        (author . ,(and (string? author)
+                        (not (string-null? author))
+                        author))
+        (tenor-url . ,(let ((url (ref gif "itemurl")))
+                        (and (string? url)
+                             (string-prefix? "https://tenor.com/" url)
+                             url)))
         (downloads
          . ,(filter-map (lambda (format)
                           (let ((found (media gif (cdr format))))
                             (and found (cons (car format) (car found)))))
-                        '(("GIF" . "gif") ("MP4" . "mp4") ("WebM" . "webm")))))
+                        '(("GIF" . "gif") ("MP4" . "mp4") ("WebM" . "webm"))))
+        (related
+         . ,(thumbnails
+              (filter (lambda (other) (not (equal? (ref other "id") id)))
+                      (if (vector? related) (vector->list related) '())))))
       (throw 'gif-missing))))
 
 ;; Tenor lays search results out in columns and lists them column by column
@@ -138,11 +177,7 @@
 (define (get-search body)
   (let ((results (ref (first-value (ref (store-cache body) "universal" "search"))
                       "results")))
-    (filter-map
-      (lambda (gif)
-        (let ((href (local-path (ref gif "itemurl")))
-              (thumb (thumbnail gif)))
-          (and href thumb (cons href thumb))))
+    (thumbnails
       (if (vector? results)
         (sort (vector->list results) layout<?)
         '()))))

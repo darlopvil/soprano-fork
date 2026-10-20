@@ -131,14 +131,12 @@
   (generic-page search-template path))
 
 ;; Search box text -> Tenor's search slug, or #f when there are no words.
-;; Tenor reads '-' in the slug as a space, so words are joined with '-'.
 ;; Forms encode spaces as '+', which becomes a space before percent-decoding,
 ;; so an actual plus sign (sent as %2B) is kept.
 (define (search-slug raw)
   (let* ((spaced (string-map (lambda (c) (if (char=? c #\+) #\space c)) raw))
-         (text (catch #t (lambda () (uri-decode spaced)) (lambda _ spaced)))
-         (words (string-tokenize text (char-set-complement char-set:whitespace))))
-    (and (pair? words) (string-join words "-"))))
+         (text (catch #t (lambda () (uri-decode spaced)) (lambda _ spaced))))
+    (words->slug text)))
 
 ;; PREFIX is the locale prefix ("" or e.g. "/es") the search came from.
 (define (search-redirect-page query prefix)

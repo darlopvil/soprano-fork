@@ -1,4 +1,5 @@
 ;; Copyright (C) 2024-2025 Skylar Astaroth <cobra@vern.cc>
+;; Copyright (C) 2026 darlopvil (modified for soprano-fork)
 ;;
 ;; This file is part of Soprano
 ;;
@@ -18,6 +19,7 @@
 (define-module (soprano pages)
   #:use-module (soprano scraping)
   #:use-module (soprano templates)
+  #:use-module (soprano upstream)
   #:use-module (htmlprag)
   #:use-module (web response)
   #:use-module (web client)
@@ -55,7 +57,7 @@
   (let ((resp "")
         (body ""))
     (receive (_resp _body)
-             (http-request (string-append "https://tenor.com" path))
+             (fetch (string-append "https://tenor.com" path))
              (set! resp _resp)
              (set! body _body))
     (display (string-append ";\tStatus: "
@@ -120,7 +122,7 @@
     (if (or (string-prefix? "https://media1.tenor.com/" url)
             (string-prefix? "https://media.tenor.com/" url))
       (begin
-        (receive (_resp _body) (http-request url)
+        (receive (_resp _body) (fetch url)
                  (set! resp _resp)
                  (set! body _body))
         (cond

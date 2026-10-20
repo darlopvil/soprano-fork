@@ -1,4 +1,5 @@
 ;; Copyright (C) 2024-2025 Skylar Astaroth <cobra@vern.cc>
+;; Copyright (C) 2026 darlopvil (modified for soprano-fork)
 ;;
 ;; This file is part of Soprano
 ;;
@@ -19,7 +20,7 @@
 
 (define-module (soprano)
   #:use-module (soprano pages)
-  #:use-module (web server)
+  #:use-module (soprano server)
   #:use-module (web uri)
   #:use-module (web request)
   #:use-module (web http)
@@ -86,6 +87,4 @@
       (sock (socket PF_INET SOCK_STREAM 0)))
   (setsockopt sock SOL_SOCKET SO_REUSEPORT 1)
   (bind sock AF_INET INADDR_ANY port)
-  (fcntl sock F_SETFL (logior O_NONBLOCK
-                              (fcntl sock F_GETFL)))
-  (run-server handler 'http `(#:socket ,sock)))
+  (run-threaded-server handler sock))
